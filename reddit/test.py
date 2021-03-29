@@ -202,103 +202,119 @@ class CoinAssets(object):
 
         return list(assets.keys())
 
-if __name__ == '__main__':
-    reddit = RedditApi()
+class CryptoSentimenter(object):
+    def __init__(self):
+        self.sentiment_summary = {
+            'id': [],
+            'text': [],
+            'coin': [],
+            'sentiment': [],
+        }
 
-    coins = CoinAssets()
-    coins = coins.get_list()
-    print('Found {} coin names'.format(len(coins)))
-    #print(coins)
+        self.reddit = RedditApi()
 
-    me = reddit.about_me()
-    print(me)
+        coins = CoinAssets()
+        coins = coins.get_list()
+        print('Found {} coin names'.format(len(coins)))
+        self.coins = coins
 
-    #articles = reddit.get_articles('/r/wallstreetbets')
-    articles = reddit.get_articles('/r/cryptomarkets')
+    def scan(self, subreddit):
+        articles = self.reddit.get_articles(subreddit)
 
-    print('Fetched {} articles'.format(articles.count()))
+        print('Fetched {} articles'.format(articles.count()))
 
-    print('Writing reddit_articles.csv')
-    with open('reddit_articles.csv', 'w+') as f:
-        articles.df.to_csv(f)
+        file_prefix = subreddit
+        if file_prefix.startswith('/r/'):
+            file_prefix = file_prefix[3:]
 
-    wf = WordFrequency(filter=coins)
+        fname = '{}_articles.csv'.format(file_prefix)
+        print('Writing {}'.format(fname))
+        with open(fname, 'w+') as f:
+            articles.df.to_csv(f)
 
-    for name, row in articles.df[['title', 'selftext']].iterrows():
-        words = nltk.word_tokenize(str(row['title']))
-        wf.add_words(words, name)
+        wf = WordFrequency(filter=self.coins)
 
-        words = nltk.word_tokenize(str(row['selftext']))
-        wf.add_words(words, name)
+        for name, row in articles.df[['title', 'selftext']].iterrows():
+            words = nltk.word_tokenize(str(row['title']))
+            wf.add_words(words, name)
 
-    comments_df = pd.DataFrame()
+            words = nltk.word_tokenize(str(row['selftext']))
+            wf.add_words(words, name)
 
-    for name in articles.df.index:
-        comments = reddit.get_comments('r/cryptomarkets', name)
+        comments_df = pd.DataFrame()
 
-        print('Fetched {} comments'.format(comments.count()))
+        for name in articles.df.index:
+            comments = self.reddit.get_comments(subreddit, name)
 
-        for index, row in comments.df[['body']].iterrows():
-            words = nltk.word_tokenize(str(row['body']))
-            #print('{} {}'.format(row['name'], words))
-            wf.add_words(words, index)
+            print('Fetched {} comments'.format(comments.count()))
 
-        comments_df = comments_df.append(comments.df, ignore_index=False)
+            for index, row in comments.df[['body']].iterrows():
+                words = nltk.word_tokenize(str(row['body']))
+                #print('{} {}'.format(row['name'], words))
+                wf.add_words(words, index)
 
-    print('Writing reddit_comments.csv')
-    with open('reddit_comments.csv', 'w+') as f:
-        comments_df.to_csv(f)
+            comments_df = comments_df.append(comments.df, ignore_index=False)
 
-    df = wf.get_dataframe()
-    print('Found {} coin mentions'.format(len(df.columns)))
+        fname = '{}_comments.csv'.format(file_prefix)
+        print('Writing {}'.format(fname))
+        with open(fname, 'w+') as f:
+            comments_df.to_csv(f)
 
-    sentiment_summary = {
-        'id': [],
-        'text': [],
-        'coin': [],
-        'sentiment': [],
-    }
+        df = wf.get_dataframe()
+        print('Found {} coin mentions'.format(len(df.columns)))
 
-    for coin, mentions in df.items():
-        print('{}\t{}'.format(coin, mentions.notna().sum()))
+        for coin, mentions in df.items():
+            print('{}\t{}'.format(coin, mentions.notna().sum()))
 
-        for name, value in mentions[mentions.notna()].items():
-            text_list = []
+            for name, value in mentions[mentions.notna()].items():
+                text_list = []
 
-            try:
-                comment_body = comments_df.loc[name]['body']
-                text_list.append(comment_body)
-                #print('comment: {} {}'.format(name, comment_body))
-            except Exception as e:
-                comment_body = None
-
-            if not comment_body:
-                # Try article text
                 try:
-                    article_body = articles.df.loc[name]
-                    text_list.append(article_body['title'])
-                    if article_body['selftext'] != '':
-                        text_list.append(article_body['selftext'])
-                        
-                    #print('article: {} {}'.format(name, article_body['title']))
+                    comment_body = comments_df.loc[name]['body']
+                    text_list.append(comment_body)
+                    #print('comment: {} {}'.format(name, comment_body))
                 except Exception as e:
-                    print('{} text not found ({})'.format(name, e))
+                    comment_body = None
 
-            for text in text_list:
-                # Todo: Run finBERT on the text to predict sentiment
+                if comment_body is None:
+                    # Try article text
+                    try:
+                        article_body = articles.df.loc[name]
+                        text_list.append(article_body['title'])
+                        if article_body['selftext'] != '':
+                            text_list.append(article_body['selftext'])
+                            
+                        #print('article: {} {}'.format(name, article_body['title']))
+                    except Exception as e:
+                        print('{} text not found ({})'.format(name, e))
 
-                sentiment_summary['id'].append(name)
-                sentiment_summary['text'].append(text)
-                sentiment_summary['coin'].append(coin)
-                sentiment_summary['sentiment'].append(None)
+                for text in text_list:
+                    # Todo: Run finBERT on the text to predict sentiment
 
-    print('Writing word_frequency.csv')
-    with open('word_frequency.csv', 'w+') as f:
-        df.to_csv(f)
+                    self.sentiment_summary['id'].append(name)
+                    self.sentiment_summary['text'].append(text)
+                    self.sentiment_summary['coin'].append(coin)
+                    self.sentiment_summary['sentiment'].append(None)
 
+        fname = '{}_word_frequency.csv'.format(file_prefix)
+        print('Writing {}'.format(fname))
+        with open(fname, 'w+') as f:
+            df.to_csv(f)
+
+    def get_dataframe(self):
+        df = pd.DataFrame.from_dict(self.sentiment_summary)
+        df = df.set_index('id')
+        return df
+
+if __name__ == '__main__':
+    sentimenter = CryptoSentimenter()
+    sentimenter.scan('/r/cryptomarkets')
+    sentimenter.scan('/r/cryptocurrency')
+    sentimenter.scan('/r/cryptocurrencies')
+    sentimenter.scan('/r/cryptomoonshots')
+    sentimenter.scan('/r/satoshistreetbets')
     print('Writing sentiment_summary.csv')
     with open('sentiment_summary.csv', 'w+') as f:
-        df = pd.DataFrame.from_dict(sentiment_summary)
-        df = df.set_index('id')
+        df = sentimenter.get_dataframe()
         df.to_csv(f)
 

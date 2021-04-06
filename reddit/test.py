@@ -1,3 +1,9 @@
+import sys
+sys.path.append(r'./deps/finBERT')
+
+from finbert.finbert import predict
+from transformers import AutoModelForSequenceClassification
+
 import requests
 import requests.auth
 import os
@@ -135,7 +141,12 @@ class RedditApi(object):
         url = 'https://www.reddit.com/{}/comments/{}/.json'.format(subreddit, article)
         print('url {}'.format(url))
         headers = {"User-Agent": self.user_agent}
-        response = requests.get(url, headers=headers).json()
+
+        try:
+            response = requests.get(url, headers=headers).json()
+        except Exception as e:
+            print('Error {} getting {}'.format(e, url))
+            return None
 
         if 'error' in response:
             raise Exception('Error {}: {}'.format(response['error'], response['message']))
@@ -246,14 +257,15 @@ class CryptoSentimenter(object):
         for name in articles.df.index:
             comments = self.reddit.get_comments(subreddit, name)
 
-            print('Fetched {} comments'.format(comments.count()))
+            if comments:
+                print('Fetched {} comments'.format(comments.count()))
 
-            for index, row in comments.df[['body']].iterrows():
-                words = nltk.word_tokenize(str(row['body']))
-                #print('{} {}'.format(row['name'], words))
-                wf.add_words(words, index)
+                for index, row in comments.df[['body']].iterrows():
+                    words = nltk.word_tokenize(str(row['body']))
+                    #print('{} {}'.format(row['name'], words))
+                    wf.add_words(words, index)
 
-            comments_df = comments_df.append(comments.df, ignore_index=False)
+                comments_df = comments_df.append(comments.df, ignore_index=False)
 
         fname = '{}_comments.csv'.format(file_prefix)
         print('Writing {}'.format(fname))
@@ -307,14 +319,26 @@ class CryptoSentimenter(object):
         return df
 
 if __name__ == '__main__':
+    model_path = 'deps/finBERT/models/classifier_model/finbert-sentiment'
+    model = AutoModelForSequenceClassification.from_pretrained(model_path,num_labels=3,cache_dir=None)
+
     sentimenter = CryptoSentimenter()
     sentimenter.scan('/r/cryptomarkets')
     sentimenter.scan('/r/cryptocurrency')
     sentimenter.scan('/r/cryptocurrencies')
     sentimenter.scan('/r/cryptomoonshots')
     sentimenter.scan('/r/satoshistreetbets')
+
+    df = sentimenter.get_dataframe()
+
+    # Testing first few sentences
+    text = '\n'.join(list(df['text'])[:10])
+
+    results = predict(text, model)
+    results.to_csv('finbert_results.csv')
+    #print('results {}'.format(results))
+
     print('Writing sentiment_summary.csv')
     with open('sentiment_summary.csv', 'w+') as f:
-        df = sentimenter.get_dataframe()
         df.to_csv(f)
 

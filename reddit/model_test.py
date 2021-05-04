@@ -1,6 +1,7 @@
 import sys
 sys.path.append(r'./deps/finBERT')
 
+import re
 import pandas as pd
 
 def do_predictions_celery():
@@ -11,10 +12,24 @@ def do_predictions_celery():
 
     tasks = []
     predictions = []
+    sentences = []
+    scores = []
 
     # Testing first few sentences
     for idx, row in sentiments.head(max_predictions).iterrows():
-        tasks.append(predict.delay(row['text'], idx))
+        text = row['text']
+        text = re.sub('^ATH| ATH', ' all time high', text, flags=re.I)
+        text = re.sub('^hodl| hodl', ' hold', text, flags=re.I)
+        text = re.sub('^DCA| dca', ' dollar cost average', text, flags=re.I)
+        text = re.sub('^FTW| ftw', ' for the win', text, flags=re.I)
+        text = re.sub('^ROI| roi', ' return on investment', text, flags=re.I)
+        text = re.sub('^mooned| mooned', ' risen sharply in price', text, flags=re.I)
+        text = re.sub('^to the moon| to the moon', ' price will rise sharply', text, flags=re.I)
+        text = re.sub('^moonshot| moonshot', ' sharp price increase', text, flags=re.I)
+        text = re.sub('^shitcoin| shitcoin', ' coin with no value', text, flags=re.I)
+
+        # To-do - emoji conversion ![gif](emote|snoomoji_pack|shrug)
+        tasks.append(predict.delay(text, idx))
 
     for task in tasks:
         results = task.get()
@@ -29,18 +44,22 @@ def do_predictions_celery():
 
         # Text is split into sentences. Select the first sentence with a coin mention.
         prediction = df[df['sentence'].str.contains(coin, case=False)]
-        #print(prediction['prediction'])
-        prediction = list(prediction['prediction'])[0]
+        prediction = prediction.iloc[0]
+        #print(prediction)
 
-        print('[{}/{}] {} {}'.format(id+1, len(sentiments), coin, prediction))
-        predictions.append(prediction)
+        print('[{}/{}] {} {}'.format(id+1, len(sentiments), coin, prediction['prediction']))
+        sentences.append(prediction['sentence'])
+        predictions.append(prediction['prediction'])
+        scores.append(prediction['sentiment_score'])
 
     if len(predictions) < max_predictions:
         for idx in range(max_predictions-len(predictions)):
             predictions.append(None)
 
     sentiments = sentiments.head(max_predictions)
+    sentiments['sentence'] = sentences
     sentiments['prediction'] = predictions
+    sentiments['score'] = scores
 
     sentiments.to_csv('sentiment_labels_predictions.csv')
 

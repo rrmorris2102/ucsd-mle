@@ -7,16 +7,16 @@ Two classes are implemented:
 - XLNetSentiment
 - XLNetSentimentTrain
 
-##XLNetSentiment
+## XLNetSentiment
 
-The XLNetSentiment class classifies text as positive, negative or neutral.
+XLNetSentiment is used to classify text as positive, negative or neutral.
 
 Methods:
 - predict - Performance sentiment analysis
 
 Usage example:
 
-```
+```python
 def xlnet_predict():
     model_file = './models/xlnet_model.bin'
     xlnet = XLNetSentiment(model_file)
@@ -26,16 +26,24 @@ def xlnet_predict():
     print(results)
 ```
 
-###XLNetSentimentTrain
+## XLNetSentimentTrain
 
-The XLNetSentimentTrain trains the XLNetForSequenceClassification model.
+XLNetSentimentTrain is used to train the underlying XLNetForSequenceClassification model.
 
-Methods:
-- train - Perform training on the labeled dataframe.  The 'columns' argument specifies the names of the text and sentiment columns in the dataframe.  The sentiment column should encode the values as follows: 0 - positive, 1 - negative, 2 - neutral
+Methods:  
+**train** - Perform training on the labeled dataframe.  The 'columns' argument specifies the names of the text and sentiment columns in the dataframe.  The sentiment column should encode the values as follows:
+
+| Encoding | Description |
+| --- | ----------- |
+| 0 | positive |
+| 1 | negative |
+| 2 | neutral |
+
 
 Usage example:
 
-```
+```python
+def xlnet_train():
     df = get_data_set()
     xlnet_train = XLNetSentimentTrain()
     xlnet_train.train(df, columns=['review', 'sentiment'])

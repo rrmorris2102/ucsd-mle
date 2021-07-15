@@ -114,9 +114,8 @@ def test_predict():
 
 def test_cosmo():
     #url = os.environ['ACCOUNT_URI']
-    #key = os.environ['ACCOUNT_KEY']
+    key = os.environ['AZURE_ACCOUNT_KEY']
     url = 'https://crypto-sentiment.documents.azure.com:443/'
-    key = '***REMOVED***'
     client = CosmosClient(url, credential=key)
 
     database_name = 'testDatabase'

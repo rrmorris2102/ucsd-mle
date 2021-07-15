@@ -1,333 +1,103 @@
 import sys
-sys.path.append(r'./deps/finBERT')
-
-from finbert.finbert import predict
-from transformers import AutoModelForSequenceClassification
-
-import requests
-import requests.auth
-import os
-import string
-from datetime import datetime
-import pytz
+from coin import CoinAssets
+from crypto_sentiment import CryptoSentimenter, WordFrequency
+from cosmo_db import RedditDB
 import pandas as pd
-import nltk
+from datetime import datetime, timezone
+import multiprocessing, threading, queue
 
-class RedditArticles(object):
-    def __init__(self, response):
-        article_summary = {
-            'subreddit': [],
-            'title': [],
-            'name': [],
-            'author_fullname': [],
-            'created_utc': [],
-            'selftext': [],
-            'upvote_ratio': [],
-            'ups': [],
-            'downs': [],
-            'score': []
-        }
+from reddit import RedditApi
 
-        for post in response['data']['children']:
-            for column in article_summary.keys():
-                if column == 'title' or column == 'selftext':
-                    #article_summary[column].append(post['data'][column].encode("utf-8"))
-                    article_summary[column].append(post['data'][column])
-                elif column == 'created_utc':
-                    dt_utc = datetime.fromtimestamp(post['data'][column])
-                    dt_utc = dt_utc.astimezone(pytz.utc)
-                    article_summary[column].append(dt_utc)
-                else:
-                    article_summary[column].append(post['data'][column])
+import pprint
+pp = pprint.PrettyPrinter(indent=4)
 
-        df = pd.DataFrame.from_dict(article_summary)
-        df = df.set_index('name')        
-        #for key in article_summary.keys():
-            #df[key] = pd.Series(article_summary[key])
+def test_reddit_web():
+    reddit_db = RedditDB()
 
-        self.df = df
+    print('{} coins'.format(reddit_db.coins.count()))
+    print('{} subreddits'.format(reddit_db.subreddits.count()))
+    print('{} authors'.format(reddit_db.authors.count()))
+    print('{} articles'.format(reddit_db.articles.count()))
+    print('{} comments'.format(reddit_db.comments.count()))
 
-    def count(self):
-        return len(self.df)
+    print('')
+    print('Coins:')
+    coins_df = reddit_db.coins.get_dataframe()
+
+    # Skip coin names that are common dictionary words
+    skip_coins = ['ONE', 'MOON', 'LONG', 'BEAR', 'LINK', 'CASH', 'DOT', 'HOT', 'SUN', 'POT', 'BOX', 'LEND', 'DASH', 'MASK']
+    coins_df = coins_df.drop(index=skip_coins)
+
+    coins_df = coins_df.head(10)
+
+    print('coin\tarticles\tcomments')
+    count = []
+    for coin in coins_df.index:
+        coin_info = coins_df.loc[coin]
+
+        articles = reddit_db.coins.association.get(reddit_db.articles, coin_info['id'])
+        articles_count = 0
+        if articles:
+            articles_count = len(articles)
+
+        comments = reddit_db.coins.association.get(reddit_db.comments, coin_info['id'])
+        comments_count = 0
+        if comments:
+            comments_count = len(comments)
+
+        count.append(articles_count + comments_count)
+
+        if articles_count > 0 or comments_count > 0:
+            print('{}\t{}\t{}'.format(coin, articles_count, comments_count))
     
-class RedditComments(object):
-    def __init__(self, response):
-        comment_summary = {
-            'name': [],
-            'body': [],
-            'author_fullname': [],
-            'created_utc': []
-        }
-        self.df = None
+    coins_df['count'] = count
 
-        def collect_comments(comment):
-            for column in comment_summary.keys():
-                #print('comment {}'.format(comment['data'].keys()))
-                if column in comment['data']:
-                    if column == 'created_utc':
-                        dt_utc = datetime.fromtimestamp(comment['data'][column])
-                        dt_utc = dt_utc.astimezone(pytz.utc)
-                        comment_summary[column].append(dt_utc)
-                    else:
-                        #comment_summary[column].append(comment['data'][column].encode("utf-8"))
-                        comment_summary[column].append(comment['data'][column])
+    # Drop coins with no mentions
+    coins_df = coins_df[(coins_df[['count']] != 0).all(axis=1)]
 
-            if 'replies' in comment['data'] and comment['data']['replies'] != '':
-                for reply in comment['data']['replies']['data']['children']:
-                    collect_comments(reply)
+    coins_df = coins_df.sort_values(by=['count'], ascending=False)
 
-        # [0] has the title
-        # [1] has the comments and replies
-        for comment in response[1]['data']['children']:
-            collect_comments(comment)
+    coins_df[['name', 'volume_1mth_usd', 'count']].to_csv('top_coins.csv')
 
-        df = pd.DataFrame()
-        for key in comment_summary.keys():
-            df[key] = pd.Series(comment_summary[key])
-        df = df.set_index('name')
+    data = {
+        'coin_id': [],
+        'article_id': [],
+        'title': [],
+        'selftext': []
+    }
 
-        self.df = df
+    for coin in coins_df.index:
+        coin_info = coins_df.loc[coin]
 
-    def count(self):
-        if self.df is None:
-            return 0
+        article_refs = reddit_db.coins.association.get(reddit_db.articles, coin_info['id'])
+        if article_refs:
+            for ref in article_refs[:10]:
+                article = reddit_db.articles.get(db_id=ref['articles_id'])
+                if article:
+                    article = article[0]
+                    data['coin_id'].append(coin)
+                    data['article_id'].append(article['article_id'])
+                    data['title'].append(article['title'])
+                    data['selftext'].append(article['selftext'])
 
-        return len(self.df)
+    articles_df = pd.DataFrame.from_dict(data)
+    articles_df.to_csv('coins_articles.csv')
 
-class RedditApi(object):
-    # https://www.reddit.com/dev/api
+def test_predict():
+    from transformers import AutoModelForSequenceClassification
+    sys.path.append(r'./deps/finBERT')
 
-    def __init__(self):
-        self.user_agent = 'HammerTrade/0.1 by rrmorris'
-        self.access_token = None
+    from finbert.finbert import predict
 
-        if 'REDDIT_AUTH' in os.environ:
-            credentials = os.environ['REDDIT_AUTH']
-
-            client_auth = requests.auth.HTTPBasicAuth('LBosXQAthwrVIg', 'q9HTClR6Y37TyrbAKdVLuakOI25_bw')
-            post_data = {"grant_type": "password", "username": "rrmorris", "password": credentials}
-            headers = {"User-Agent": self.user_agent}
-            response = requests.post("https://www.reddit.com/api/v1/access_token", auth=client_auth, data=post_data, headers=headers)
-            response = response.json()
-            print(response)
-            if not 'access_token' in response:
-                raise Exception('Unable to retrieve access token')
-
-            self.access_token = response['access_token']
-    
-    def about_me(self):
-        if self.access_token:
-            headers = {"Authorization": 'bearer {}'.format(self.access_token), "User-Agent": self.user_agent}
-            response = requests.get("https://oauth.reddit.com/api/v1/me", headers=headers)
-            return response.json()
-
-        return None
-
-    def get_articles(self, subreddit):
-       
-        url = 'https://www.reddit.com/{}/top/.json?limit=500'.format(subreddit)
-        print('url {}'.format(url))
-        headers = {"User-Agent": self.user_agent}
-        response = requests.get(url, headers=headers).json()
-
-        if 'error' in response:
-            raise Exception('Error {}: {}'.format(response['error'], response['message']))
-
-        return RedditArticles(response)
-    
-    def get_comments(self, subreddit, article):
-        if article.startswith('t3_'):
-            article = article[3:]
-        url = 'https://www.reddit.com/{}/comments/{}/.json'.format(subreddit, article)
-        print('url {}'.format(url))
-        headers = {"User-Agent": self.user_agent}
-
-        try:
-            response = requests.get(url, headers=headers).json()
-        except Exception as e:
-            print('Error {} getting {}'.format(e, url))
-            return None
-
-        if 'error' in response:
-            raise Exception('Error {}: {}'.format(response['error'], response['message']))
-
-        return RedditComments(response)
-
-class WordFrequency(object):
-    def __init__(self, filter=None):
-        self.stop_words = ['b', 'i', 'are', 'as', 'but', 'we', 'an', 'by', 'has', 'or', 'was', 'that', 'me', 'like', 'have', 'if', 'so', 'your', 'the', 'and', 'for', 'on', 'to', 'I', 'a', 'of', 'with', 'is', 'my', 'you', 'be', 'in', 'this', 'at', 'it', 'from', 'after', 'their', '-']
-        self.word_summary = {}
-        self.df = None
-        self.table = str.maketrans(dict.fromkeys(string.punctuation))
-        self.filter = filter
-    
-    def add_words(self, words, ref):
-        # https://stackoverflow.com/questions/265960/best-way-to-strip-punctuation-from-a-string        
-
-        for word in words:
-            word = word.strip().lower().translate(self.table)
-
-            if word == '':
-                continue
-
-            if not word in self.stop_words:
-                if not self.filter or (self.filter and word in self.filter):
-                    if not word in self.word_summary:
-                        self.word_summary[word] = {}
-
-                    self.word_summary[word][ref] = 1
-
-    def count(self):
-        return len(self.word_summary.keys())
-
-    # DataFrame shape:
-    # x-axis: coins
-    # y-axis: reddit comment/article ids
-    #
-    def get_dataframe(self):
-        df_merge = pd.DataFrame()
-        for key in self.word_summary.keys():
-            df = pd.DataFrame()
-            df[key] = pd.Series([1]*len(self.word_summary[key].keys()), index=self.word_summary[key].keys())
-            #print('word df {}'.format(df))
-
-            df_merge = pd.concat([df_merge, df], axis=1)
-
-        return df_merge
-
-class CoinAssets(object):
-    def __init__(self):
-        # coin_assets.json retrieved from 
-        self.df = pd.read_json('coin_assets.json')
-        self.df = self.df.query('type_is_crypto == 1 & volume_1mth_usd > 0')
-        self.df = self.df.sort_values(by=['volume_1mth_usd'],ascending=False).head(100)
-
-    def get_list(self):
-        assets = {}
-
-        for asset in list(self.df['asset_id'].str.lower()):
-            assets[str(asset).strip()] = 1
-
-        for asset in list(self.df['name'].str.lower()):
-            assets[str(asset).strip()] = 1
-
-        return list(assets.keys())
-
-class CryptoSentimenter(object):
-    def __init__(self):
-        self.sentiment_summary = {
-            'id': [],
-            'text': [],
-            'coin': [],
-            'sentiment': [],
-        }
-
-        self.reddit = RedditApi()
-
-        coins = CoinAssets()
-        coins = coins.get_list()
-        print('Found {} coin names'.format(len(coins)))
-        self.coins = coins
-
-    def scan(self, subreddit):
-        articles = self.reddit.get_articles(subreddit)
-
-        print('Fetched {} articles'.format(articles.count()))
-
-        file_prefix = subreddit
-        if file_prefix.startswith('/r/'):
-            file_prefix = file_prefix[3:]
-
-        fname = '{}_articles.csv'.format(file_prefix)
-        print('Writing {}'.format(fname))
-        with open(fname, 'w+') as f:
-            articles.df.to_csv(f)
-
-        wf = WordFrequency(filter=self.coins)
-
-        for name, row in articles.df[['title', 'selftext']].iterrows():
-            words = nltk.word_tokenize(str(row['title']))
-            wf.add_words(words, name)
-
-            words = nltk.word_tokenize(str(row['selftext']))
-            wf.add_words(words, name)
-
-        comments_df = pd.DataFrame()
-
-        for name in articles.df.index:
-            comments = self.reddit.get_comments(subreddit, name)
-
-            if comments:
-                print('Fetched {} comments'.format(comments.count()))
-
-                for index, row in comments.df[['body']].iterrows():
-                    words = nltk.word_tokenize(str(row['body']))
-                    #print('{} {}'.format(row['name'], words))
-                    wf.add_words(words, index)
-
-                comments_df = comments_df.append(comments.df, ignore_index=False)
-
-        fname = '{}_comments.csv'.format(file_prefix)
-        print('Writing {}'.format(fname))
-        with open(fname, 'w+') as f:
-            comments_df.to_csv(f)
-
-        df = wf.get_dataframe()
-        print('Found {} coin mentions'.format(len(df.columns)))
-
-        for coin, mentions in df.items():
-            print('{}\t{}'.format(coin, mentions.notna().sum()))
-
-            for name, value in mentions[mentions.notna()].items():
-                text_list = []
-
-                try:
-                    comment_body = comments_df.loc[name]['body']
-                    text_list.append(comment_body)
-                    #print('comment: {} {}'.format(name, comment_body))
-                except Exception as e:
-                    comment_body = None
-
-                if comment_body is None:
-                    # Try article text
-                    try:
-                        article_body = articles.df.loc[name]
-                        text_list.append(article_body['title'])
-                        if article_body['selftext'] != '':
-                            text_list.append(article_body['selftext'])
-                            
-                        #print('article: {} {}'.format(name, article_body['title']))
-                    except Exception as e:
-                        print('{} text not found ({})'.format(name, e))
-
-                for text in text_list:
-                    # Todo: Run finBERT on the text to predict sentiment
-
-                    self.sentiment_summary['id'].append(name)
-                    self.sentiment_summary['text'].append(text)
-                    self.sentiment_summary['coin'].append(coin)
-                    self.sentiment_summary['sentiment'].append(None)
-
-        fname = '{}_word_frequency.csv'.format(file_prefix)
-        print('Writing {}'.format(fname))
-        with open(fname, 'w+') as f:
-            df.to_csv(f)
-
-    def get_dataframe(self):
-        df = pd.DataFrame.from_dict(self.sentiment_summary)
-        df = df.set_index('id')
-        return df
-
-if __name__ == '__main__':
     model_path = 'deps/finBERT/models/classifier_model/finbert-sentiment'
     model = AutoModelForSequenceClassification.from_pretrained(model_path,num_labels=3,cache_dir=None)
 
     sentimenter = CryptoSentimenter()
     sentimenter.scan('/r/cryptomarkets')
-    sentimenter.scan('/r/cryptocurrency')
-    sentimenter.scan('/r/cryptocurrencies')
-    sentimenter.scan('/r/cryptomoonshots')
-    sentimenter.scan('/r/satoshistreetbets')
+    #sentimenter.scan('/r/cryptocurrency')
+    #sentimenter.scan('/r/cryptocurrencies')
+    #sentimenter.scan('/r/cryptomoonshots')
+    #sentimenter.scan('/r/satoshistreetbets')
 
     df = sentimenter.get_dataframe()
 
@@ -342,3 +112,51 @@ if __name__ == '__main__':
     with open('sentiment_summary.csv', 'w+') as f:
         df.to_csv(f)
 
+def test_cosmo():
+    #url = os.environ['ACCOUNT_URI']
+    #key = os.environ['ACCOUNT_KEY']
+    url = 'https://crypto-sentiment.documents.azure.com:443/'
+    key = '***REMOVED***'
+    client = CosmosClient(url, credential=key)
+
+    database_name = 'testDatabase'
+    try:
+        database = client.create_database(database_name)
+    except exceptions.CosmosResourceExistsError:
+        database = client.get_database_client(database_name)
+
+    container_name = 'products'
+
+    try:
+        container = database.create_container(id=container_name, partition_key=PartitionKey(path="/productName"))
+    except exceptions.CosmosResourceExistsError:
+        container = database.get_container_client(container_name)
+    except exceptions.CosmosHttpResponseError:
+        raise
+
+    for i in range(1, 10):
+        container.upsert_item({
+                'id': 'item{0}'.format(i),
+                'productName': 'Widget',
+                'productModel': 'Model {0}'.format(i)
+            }
+        )
+
+    for item in container.query_items(
+            query='SELECT * FROM products p WHERE p.id="item3"',
+            enable_cross_partition_query=True):
+        print(json.dumps(item, indent=True))
+
+class MainProcess(multiprocessing.Process):
+    def __init__(self):
+        multiprocessing.Process.__init__(self)
+
+    def run(self):
+        #test_cosmo()
+        #test_predict()
+        test_reddit_web()
+
+if __name__ == '__main__':
+    main = MainProcess()
+    main.start()
+    main.join()    

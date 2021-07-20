@@ -28,15 +28,18 @@ class RedditArticles(object):
 
         for post in response['data']['children']:
             for column in article_summary.keys():
-                if column == 'title' or column == 'selftext':
-                    #article_summary[column].append(post['data'][column].encode("utf-8"))
-                    article_summary[column].append(post['data'][column])
-                elif column == 'created_utc':
-                    dt_utc = datetime.fromtimestamp(post['data'][column])
-                    dt_utc = dt_utc.astimezone(pytz.utc)
-                    article_summary[column].append(dt_utc)
+                if column in post['data']:
+                    if column == 'title' or column == 'selftext':
+                        #article_summary[column].append(post['data'][column].encode("utf-8"))
+                        article_summary[column].append(post['data'][column])
+                    elif column == 'created_utc':
+                        dt_utc = datetime.fromtimestamp(post['data'][column])
+                        dt_utc = dt_utc.astimezone(pytz.utc)
+                        article_summary[column].append(dt_utc)
+                    else:
+                        article_summary[column].append(post['data'][column])
                 else:
-                    article_summary[column].append(post['data'][column])
+                    article_summary[column].append(None)
 
         df = pd.DataFrame.from_dict(article_summary)
         df = df.set_index('name')        

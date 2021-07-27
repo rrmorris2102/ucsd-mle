@@ -36,6 +36,7 @@ class SentimentDataset(Dataset):
             pad_to_max_length=False,
             return_attention_mask=True,
             return_tensors='pt',
+            truncation=True
             )
 
         input_ids = pad_sequences(encoding['input_ids'], maxlen=self.max_len, dtype=torch.Tensor ,truncating="post",padding="post")
@@ -58,11 +59,11 @@ class XLNetSentiment(object):
     The main class for XLNet.
     """
 
-    def __init__(self, model_file):
+    def __init__(self, model_file, max_len=64):
         device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
         print('device {}'.format(device))
 
-        model = XLNetForSequenceClassification.from_pretrained('xlnet-base-cased', num_labels = 2)
+        model = XLNetForSequenceClassification.from_pretrained('xlnet-base-cased', num_labels = 3)
         model.load_state_dict(torch.load(model_file))
         model = model.to(device)        
 
@@ -72,10 +73,10 @@ class XLNetSentiment(object):
         PRE_TRAINED_MODEL_NAME = 'xlnet-base-cased'
         self.tokenizer = XLNetTokenizer.from_pretrained(PRE_TRAINED_MODEL_NAME)
 
-        self.MAX_LEN = 512
+        self.MAX_LEN = max_len
 
-        #self.class_names = ['positive', 'negative', 'neutral']
-        self.class_names = ['positive', 'negative']
+        self.class_names = ['positive', 'negative', 'neutral']
+        #self.class_names = ['positive', 'negative']
         
     def predict(self, text):
         encoded_text = self.tokenizer.encode_plus(
@@ -86,6 +87,7 @@ class XLNetSentiment(object):
             pad_to_max_length=False,
             return_attention_mask=True,
             return_tensors='pt',
+            truncation=True
         )
 
         input_ids = pad_sequences(encoded_text['input_ids'], maxlen=self.MAX_LEN, dtype=torch.Tensor ,truncating="post",padding="post")
@@ -109,7 +111,7 @@ class XLNetSentiment(object):
         results = {
             'positive_score': probs[0],
             'negative_score': probs[1],
-            #'neutral_score': probs[2],
+            'neutral_score': probs[2],
             'text': text,
             'sentiment': self.class_names[prediction]
         }
@@ -125,7 +127,7 @@ class XLNetSentimentTrain(object):
     XLNet Training
     """
 
-    def __init__(self):
+    def __init__(self, batchsize=16, max_len=64):
         RANDOM_SEED = 42
         np.random.seed(RANDOM_SEED)
         torch.manual_seed(RANDOM_SEED)
@@ -133,7 +135,7 @@ class XLNetSentimentTrain(object):
         device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
         print('device {}'.format(device))
 
-        model = XLNetForSequenceClassification.from_pretrained('xlnet-base-cased', num_labels = 2)
+        model = XLNetForSequenceClassification.from_pretrained('xlnet-base-cased', num_labels = 3)
         model = model.to(device)        
 
         self.device = device
@@ -144,13 +146,13 @@ class XLNetSentimentTrain(object):
 
         self.test_size = 0.5
         self.random_state = 101
-        self.MAX_LEN = 512
-        self.BATCH_SIZE = 4
-        self.EPOCHS = 3
+        self.MAX_LEN = max_len
+        self.BATCH_SIZE = batchsize
+        self.EPOCHS = 10
         self.num_data_workers = 4
         self.model_file = './models/xlnet_model.bin'
-        #self.class_names = ['positive', 'negative', 'neutral']
-        self.class_names = ['positive', 'negative']
+        self.class_names = ['positive', 'negative', 'neutral']
+        #self.class_names = ['positive', 'negative']
 
         self.columns = None
 
@@ -228,7 +230,9 @@ class XLNetSentimentTrain(object):
         y_review_texts, y_pred, y_pred_probs, y_test = \
             self.__get_predictions(test_data_loader)
 
-        print(classification_report(y_test, y_pred, target_names=self.class_names))
+        report = classification_report(y_test, y_pred, target_names=self.class_names)
+
+        return report
 
     def __create_data_loader(self, df, max_len, batch_size):
         ds = SentimentDataset(
@@ -252,6 +256,11 @@ class XLNetSentimentTrain(object):
     
         for idx, d in enumerate(data_loader):
             print('train_epoch {}/{}'.format(idx, len(data_loader)))
+
+            if len(d["input_ids"]) < self.BATCH_SIZE:
+                print('Skipped partial batch (got {}, expected {})'.format(len(d["input_ids"]), self.BATCH_SIZE))
+                continue
+
             input_ids = d["input_ids"].reshape(self.BATCH_SIZE,self.MAX_LEN).to(self.device)
             attention_mask = d["attention_mask"].to(self.device)
             targets = d["targets"].to(self.device)
@@ -290,7 +299,12 @@ class XLNetSentimentTrain(object):
     
         with torch.no_grad():
             for idx, d in enumerate(data_loader):
-                print('eval_model {}/{}'.format(idx, len(data_loader)))            
+                print('eval_model {}/{}'.format(idx, len(data_loader)))
+
+                if len(d["input_ids"]) < self.BATCH_SIZE:
+                    print('Skipped partial batch (got {}, expected {})'.format(len(d["input_ids"]), self.BATCH_SIZE))
+                    continue
+
                 input_ids = d["input_ids"].reshape(self.BATCH_SIZE,self.MAX_LEN).to(self.device)
                 attention_mask = d["attention_mask"].to(self.device)
                 targets = d["targets"].to(self.device)
@@ -323,6 +337,10 @@ class XLNetSentimentTrain(object):
 
         with torch.no_grad():
             for idx, d in enumerate(data_loader):
+
+                if len(d["input_ids"]) < self.BATCH_SIZE:
+                    print('Skipped partial batch (got {}, expected {})'.format(len(d["input_ids"]), self.BATCH_SIZE))
+                    continue
 
                 texts = d["review_text"]
                 input_ids = d["input_ids"].reshape(self.BATCH_SIZE,self.MAX_LEN).to(self.device)

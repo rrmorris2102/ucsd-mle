@@ -45,13 +45,13 @@ def xlnet_train():
 
 def xlnet_predict():
     model_file = './models/xlnet_model.bin'
-    xlnet = XLNetSentiment(model_file)
+    xlnet = XLNetSentiment(model_file, batchsize=1, max_len=64)
 
-    text = "Movie is the worst one I have ever seen!! The story has no meaning at all"
+    text = "xrp is the biggest scam ever. if you have a profit on it, sell now and get out while you still can."
     results = xlnet.predict(text)
     print(results)
 
-    text = "This is the best movie I have ever seen!! The story is such a motivation"
+    text = '"Rich Dad Poor Dad" Author Predicts That Bitcoin Could Hit $1.2 Million.'
     results = xlnet.predict(text)
     print(results)
 

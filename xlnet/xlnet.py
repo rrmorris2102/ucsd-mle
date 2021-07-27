@@ -59,7 +59,7 @@ class XLNetSentiment(object):
     The main class for XLNet.
     """
 
-    def __init__(self, model_file, max_len=64):
+    def __init__(self, model_file, batchsize=16, max_len=64):
         device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
         print('device {}'.format(device))
 
@@ -74,6 +74,7 @@ class XLNetSentiment(object):
         self.tokenizer = XLNetTokenizer.from_pretrained(PRE_TRAINED_MODEL_NAME)
 
         self.MAX_LEN = max_len
+        self.BATCHSIZE = batchsize
 
         self.class_names = ['positive', 'negative', 'neutral']
         #self.class_names = ['positive', 'negative']
@@ -98,7 +99,7 @@ class XLNetSentiment(object):
         attention_mask = attention_mask.astype(dtype = 'int64')
         attention_mask = torch.tensor(attention_mask) 
 
-        input_ids = input_ids.reshape(1,self.MAX_LEN).to(self.device)
+        input_ids = input_ids.reshape(self.BATCHSIZE,self.MAX_LEN).to(self.device)
         attention_mask = attention_mask.to(self.device)
 
         outputs = self.model(input_ids=input_ids, attention_mask=attention_mask)

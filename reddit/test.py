@@ -66,6 +66,12 @@ def test_reddit_web():
         'selftext': []
     }
 
+    data_comments = {
+        'coin_id': [],
+        'comment_id': [],
+        'body': []
+    }
+
     for coin in coins_df.index:
         coin_info = coins_df.loc[coin]
 
@@ -80,8 +86,21 @@ def test_reddit_web():
                     data['title'].append(article['title'])
                     data['selftext'].append(article['selftext'])
 
+        comment_refs = reddit_db.coins.association.get(reddit_db.comments, coin_info['id'])
+        if comment_refs:
+            for ref in comment_refs[:10]:
+                comment = reddit_db.comments.get(db_id=ref['comments_id'])
+                if comment:
+                    comment = comment[0]
+                    data_comments['coin_id'].append(coin)
+                    data_comments['comment_id'].append(comment['comment_id'])
+                    data_comments['body'].append(comment['body'])
+
     articles_df = pd.DataFrame.from_dict(data)
     articles_df.to_csv('coins_articles.csv')
+
+    comments_df = pd.DataFrame.from_dict(data_comments)
+    comments_df.to_csv('coins_comments.csv')
 
 def test_predict():
     from transformers import AutoModelForSequenceClassification

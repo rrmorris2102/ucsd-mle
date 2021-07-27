@@ -228,59 +228,125 @@ class RedditSubredditProcess(mp.Process):
                 self.requests.task_done()
                 break
 
-            self.reddit_context.attach()
-            reddit_db = self.reddit_context.reddit_db
+            try:
+                self.reddit_context.attach()
+                reddit_db = self.reddit_context.reddit_db
 
-            group = request['subreddit']
-            logging.info('Update subreddit started {}'.format(group))
-            articles = reddit.get_articles(group)
+                group = request['subreddit']
+                logging.info('Update subreddit started {}'.format(group))
+                articles = reddit.get_articles(group)
 
-            # Get subreddit info from first record
-            subreddit = articles.df.iloc[0]
-            reddit_db.subreddits.add(
-                {
-                    'subreddit_id': subreddit.subreddit_id,
-                    'name': subreddit.subreddit,
-                    'subscribers': int(subreddit.subreddit_subscribers)
-                })
+                # Get subreddit info from first record
+                subreddit = articles.df.iloc[0]
+                reddit_db.subreddits.add(
+                    {
+                        'subreddit_id': subreddit.subreddit_id,
+                        'name': subreddit.subreddit,
+                        'subscribers': int(subreddit.subreddit_subscribers)
+                    })
 
-            logging.debug('{} subreddits'.format(reddit_db.subreddits.count()))
+                logging.debug('{} subreddits'.format(reddit_db.subreddits.count()))
 
-            wf = WordFrequency(filter=coins)
+                wf = WordFrequency(filter=coins)
 
-            last_article_seconds = None
-            last_article = reddit_db.articles.get_last(filter='subreddit_id = "{}"'.format(subreddit.subreddit_id))
-            if last_article:
-                last_article = last_article[0]
-                last_article_seconds = last_article['created_utc']
+                last_article_seconds = None
+                last_article = reddit_db.articles.get_last(filter='subreddit_id = "{}"'.format(subreddit.subreddit_id))
+                if last_article:
+                    last_article = last_article[0]
+                    last_article_seconds = last_article['created_utc']
 
-            # Thread pool
-            threads = []
-            max_workers = 8
-            requests = queue.Queue()
-            results = queue.Queue()
+                # Thread pool
+                threads = []
+                max_workers = 8
+                requests = queue.Queue()
+                results = queue.Queue()
 
-            for idx in range(max_workers):
-                x = RedditArticleWorker(self.reddit_context, group, subreddit.subreddit_id, last_article_seconds, requests, results)
-                threads.append(x)
-                x.start()
+                for idx in range(max_workers):
+                    x = RedditArticleWorker(self.reddit_context, group, subreddit.subreddit_id, last_article_seconds, requests, results)
+                    threads.append(x)
+                    x.start()
 
-            # Add authors and articles
-            for article_id, article in articles.df.iterrows():
-                request = {'article_id': article_id, 'article': article}
-                requests.put(request)
+                # Add authors and articles
+                for article_id, article in articles.df.iterrows():
+                    request = {'article_id': article_id, 'article': article}
+                    requests.put(request)
 
-            for idx in range(max_workers):
-                requests.put(None)
+                for idx in range(max_workers):
+                    requests.put(None)
 
-            requests.join()
+                requests.join()
 
-            for x in threads:
-                x.join()
+                for x in threads:
+                    x.join()
 
-            logging.info('Update subreddit finished {}'.format(group))
-            self.reddit_context.detach()
+                logging.info('Update subreddit finished {}'.format(group))
+                self.reddit_context.detach()
+            except Exception as e:
+                logging.error(e)
+
             self.requests.task_done()
+
+def reddit_backup(event):
+    reddit_db = RedditDB()
+
+    df = reddit_db.coins.get_dataframe()
+    df.to_csv('reddit_db_coins.csv')
+
+    df = reddit_db.subreddits.get_dataframe()
+    df.to_csv('reddit_db_subreddits.csv')
+
+    df = reddit_db.authors.get_dataframe()
+    df.to_csv('reddit_db_authors.csv')
+
+    df = reddit_db.articles.get_dataframe()
+    df.to_csv('reddit_db_articles.csv')
+
+    df = reddit_db.comments.get_dataframe()
+    df.to_csv('reddit_db_comments.csv')
+
+def reddit_test(event):
+    reddit = RedditApi()
+
+    coin_assets = CoinAssets()
+    coins = coin_assets.get_list()
+
+    logging.debug('Found {} coin names'.format(len(coins)))
+
+    subreddits = [
+        '/r/cryptomarkets',
+        '/r/cryptocurrency',
+        '/r/cryptocurrencies',
+        '/r/cryptomoonshots',
+        '/r/satoshistreetbets'
+    ]
+
+    reddit_db = RedditDB()
+
+    # Populate coins
+    if reddit_db.coins.count() != len(coin_assets.df):
+        for coin_id, coin in coin_assets.df.iterrows():
+            coin_name = coin_id if pd.isna(coin['name']) else coin['name']
+            volume_1hrs_usd = 0 if pd.isna(coin['volume_1hrs_usd']) else coin['volume_1hrs_usd']
+            volume_1day_usd = 0 if pd.isna(coin['volume_1day_usd']) else coin['volume_1day_usd']
+            volume_1mth_usd = 0 if pd.isna(coin['volume_1mth_usd']) else coin['volume_1mth_usd']
+            price_usd = 0 if pd.isna(coin['price_usd']) else coin['price_usd']
+            id_icon = 0 if pd.isna(coin['id_icon']) else coin['id_icon']
+
+            reddit_db.coins.add(
+                {
+                    'coin_id': coin_id,
+                    'name': coin_name,
+                    'volume_1hrs_usd': volume_1mth_usd,
+                    'volume_1day_usd': volume_1day_usd,
+                    'volume_1mth_usd': volume_1mth_usd,
+                    'price_usd': price_usd,
+                    'id_icon': id_icon,
+                    'updated_utc': datetime.utcnow().isoformat()
+                }
+            )
+
+    coins_db = reddit_db.coins.get_dataframe()
+    coins_db.to_csv('test.csv')
 
 def reddit_sync(event):
     reddit = RedditApi()
@@ -343,44 +409,43 @@ def reddit_sync(event):
         while True:
             logging.info('Wake up')
 
-            try:
-                del reddit_db
-                reddit_db = RedditDB()
+            del reddit_db
+            reddit_db = RedditDB()
 
-                num_authors = reddit_db.authors.count()
-                num_articles = reddit_db.articles.count()
-                num_comments = reddit_db.comments.count()
+            num_authors = reddit_db.authors.count()
+            num_articles = reddit_db.articles.count()
+            num_comments = reddit_db.comments.count()
 
-                tick = time.time()
+            tick = time.time()
 
-                for group in subreddits:
-                    requests.put({'subreddit': group})
+            for group in subreddits:
+                requests.put({'subreddit': group})
 
-                requests.join()
+            requests.join()
 
-                tock = time.time()
+            tock = time.time()
 
-                logging.info('Elapsed time {} seconds'.format(tock - tick))
+            logging.info('Elapsed time {} seconds'.format(tock - tick))
 
-                count = reddit_db.authors.count()
-                logging.info('{} authors added'.format(count - num_authors))
-                logging.info('{} total authors'.format(count))
+            count = reddit_db.authors.count()
+            logging.info('{} authors added'.format(count - num_authors))
+            logging.info('{} total authors'.format(count))
 
-                count = reddit_db.articles.count()
-                logging.info('{} articles added'.format(count - num_articles))
-                logging.info('{} total articles'.format(count))
+            count = reddit_db.articles.count()
+            logging.info('{} articles added'.format(count - num_articles))
+            logging.info('{} total articles'.format(count))
 
-                count = reddit_db.comments.count()
-                logging.info('{} comments added'.format(count - num_comments))
-                logging.info('{} total comments'.format(count))
+            count = reddit_db.comments.count()
+            logging.info('{} comments added'.format(count - num_comments))
+            logging.info('{} total comments'.format(count))
 
-                logging.info('Sleeping for {} seconds'.format(sleep_delay))
-            except Exception as e:
-                logging.error(e)
+            logging.info('Sleeping for {} seconds'.format(sleep_delay))
 
             event.wait(sleep_delay)
     except KeyboardInterrupt:
         logging.debug('interrupted!')
+    except Exception as e:
+        logging.error(e)
 
     for x in processes:
         x.join()
@@ -392,6 +457,8 @@ class MainProcess(mp.Process):
 
     def run(self):
         reddit_sync(event)
+        #reddit_backup(event)
+        #reddit_test(event)
 
 if __name__ == '__main__':
     event = mp.Event()

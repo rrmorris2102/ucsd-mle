@@ -133,7 +133,12 @@ class RedditApi(object):
         url = 'https://www.reddit.com/{}/top/.json?limit=500'.format(subreddit)
         logging.debug('url {}'.format(url))
         headers = {"User-Agent": self.user_agent}
-        response = requests.get(url, headers=headers).json()
+
+        try:
+            response = requests.get(url, headers=headers).json()
+        except Exception as e:
+            logging.error('Error {} getting {}'.format(e, url))
+            return None
 
         if 'error' in response:
             raise Exception('Error {}: {}'.format(response['error'], response['message']))

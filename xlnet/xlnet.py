@@ -59,7 +59,7 @@ class XLNetSentiment(object):
     The main class for XLNet.
     """
 
-    def __init__(self, model_file, batchsize=16, max_len=64):
+    def __init__(self, model_file, batchsize=48, max_len=64):
         device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
         print('device {}'.format(device))
 
@@ -149,9 +149,9 @@ class XLNetSentimentTrain(object):
         self.random_state = 101
         self.MAX_LEN = max_len
         self.BATCH_SIZE = batchsize
-        self.EPOCHS = 10
+        self.EPOCHS = 20
         self.num_data_workers = 4
-        self.model_file = './models/xlnet_model.bin'
+        self.model_file = './models/xlnet_model_batch{}.bin'.format(batchsize)
         self.class_names = ['positive', 'negative', 'neutral']
         #self.class_names = ['positive', 'negative']
 
@@ -233,7 +233,18 @@ class XLNetSentimentTrain(object):
 
         report = classification_report(y_test, y_pred, target_names=self.class_names)
 
-        return report
+        results = {
+            'classification_report': report,
+            'epochs': self.EPOCHS,
+            'batchsize': self.BATCH_SIZE,
+            'max_len': self.MAX_LEN,
+            'train_acc': history['train_acc'],
+            'val_acc': history['val_acc'],
+            'train_loss': history['train_loss'],
+            'val_loss': history['val_loss']
+        }
+
+        return results
 
     def __create_data_loader(self, df, max_len, batch_size):
         ds = SentimentDataset(

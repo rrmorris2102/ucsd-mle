@@ -1,0 +1,2 @@
+AZURE_ACCOUNT_KEY=<fill in your Azure account key here>
+REDDIT_SLEEP_DELAY=3600

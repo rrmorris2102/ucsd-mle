@@ -113,14 +113,16 @@ class CosmosContainer(object):
 
         return item_count
 
-    def get(self, id=None, db_id=None):
+    def get(self, id=None, db_id=None, filter=None):
         items = []
 
         query = 'SELECT * FROM c where c.table_id = {}'.format(self.table.table_id)
         if not id is None:
-            query = 'SELECT * FROM c where c.table_id = {} and c.{} = "{}"'.format(self.table.table_id, self.index, id)
+            query += ' and c.{} = "{}"'.format(self.index, id)
         if not db_id is None:
-            query = 'SELECT * FROM c where c.table_id = {} and c.id = "{}"'.format(self.table.table_id, db_id)
+            query += ' and c.id = "{}"'.format(db_id)
+        if not filter is None:
+            query += ' and c.{}'.format(filter)
 
         for item in self.container.query_items(
                 query=query,
@@ -234,21 +236,25 @@ class RedditDBArticles(CosmosContainer):
     # Returns 0 if record already exists
     def add(self, data):
         items = self.container.query_items(
-                    query='SELECT VALUE COUNT(1) FROM c where c.table_id = {} and c.article_id = "{}"'.format(self.table.table_id, data['article_id']),
+                    query='SELECT * FROM c where c.table_id = {} and c.article_id = "{}"'.format(self.table.table_id, data['article_id']),
                     enable_cross_partition_query=True)
 
         item_count = 0
-        num_updated = 0
 
         for item in items:
-            item_count = item
+            item_count += 1
+            if 'sentiment' in data:
+                if not 'sentiment' in item or item['sentiment'] != data['sentiment']:
+                    # Update the sentiment
+                    item['sentiment'] = data['sentiment']
+                    self.container.replace_item(item=item, body=item)
 
         if item_count == 0:
             data['table_id'] = self.table.table_id
             self.container.upsert_item(data)
-            num_updated = 1
+            item_count += 1
 
-        return num_updated
+        return item_count
 
 class RedditDBComments(CosmosContainer):
     def __init__(self, client):
@@ -258,21 +264,25 @@ class RedditDBComments(CosmosContainer):
     # Returns 0 if record already exists
     def add(self, data):
         items = self.container.query_items(
-                    query='SELECT VALUE COUNT(1) FROM c where c.table_id = {} and c.comment_id = "{}"'.format(self.table.table_id, data['comment_id']),
+                    query='SELECT * FROM c where c.table_id = {} and c.comment_id = "{}"'.format(self.table.table_id, data['comment_id']),
                     enable_cross_partition_query=True)
 
         item_count = 0
-        num_updated = 0
 
         for item in items:
-            item_count = item
+            item_count += 1
+            if 'sentiment' in data:
+                if not 'sentiment' in item or item['sentiment'] != data['sentiment']:
+                    # Update the sentiment
+                    item['sentiment'] = data['sentiment']
+                    self.container.replace_item(item=item, body=item)
 
         if item_count == 0:
             data['table_id'] = self.table.table_id
             self.container.upsert_item(data)
-            num_updated = 1
+            item_count = 1
 
-        return num_updated
+        return item_count
 
 class RedditDBCoins(CosmosContainer):
     def __init__(self, client):

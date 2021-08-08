@@ -9,5 +9,6 @@ COPY xlnet/sentiment_updater.py sentiment_updater.py
 COPY reddit/cosmo_db.py cosmo_db.py
 
 RUN pip3 install -r requirements.txt
+RUN python3 -m nltk.downloader punkt
 
 CMD [ "python3", "sentiment_updater.py"]

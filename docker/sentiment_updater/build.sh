@@ -1,1 +1,1 @@
-docker build --tag rrmorris/reddit-sentiment-updater:v1.0.0 --file ./Dockerfile ../..
+docker build --tag rrmorris/reddit-sentiment-updater:v1.0.2 --file ./Dockerfile ../..

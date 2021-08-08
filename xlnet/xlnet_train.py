@@ -32,7 +32,7 @@ print(df.head(10))
 sequences=[64]
 history = []
 for seq in sequences:
-    xlnet_train = XLNetSentimentTrain(batchsize=16, max_len=seq)
+    xlnet_train = XLNetSentimentTrain(batchsize=48, max_len=seq)
     history.append(xlnet_train.train(df, ['text', 'sentiment']))
 
 for hist in history:

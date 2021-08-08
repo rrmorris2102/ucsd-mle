@@ -3,7 +3,7 @@ import sys
 import json
 import logging
 import pandas as pd
-from typing import Counter
+#from typing import Counter
 from azure.cosmos import CosmosClient, PartitionKey, exceptions
 
 class CosmosConnection(object):
@@ -113,10 +113,18 @@ class CosmosContainer(object):
 
         return item_count
 
-    def get(self, id=None, db_id=None, filter=None):
+    def get(self, columns=None, id=None, db_id=None, filter=None):
         items = []
 
-        query = 'SELECT * FROM c where c.table_id = {}'.format(self.table.table_id)
+        if columns:
+            columns_filter = 'c.{}'.format(columns[0])
+            for column in columns[1:]:
+                columns_filter += ', c.{}'.format(column)
+            columns_filter += ', c.id, c.table_id, c.{}'.format(self.index)
+        if columns is None:
+            columns_filter = '*'
+
+        query = 'SELECT {} FROM c where c.table_id = {}'.format(columns_filter, self.table.table_id)
         if not id is None:
             query += ' and c.{} = "{}"'.format(self.index, id)
         if not db_id is None:

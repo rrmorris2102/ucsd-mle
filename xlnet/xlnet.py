@@ -149,7 +149,7 @@ class XLNetSentimentTrain(object):
         self.random_state = 101
         self.MAX_LEN = max_len
         self.BATCH_SIZE = batchsize
-        self.EPOCHS = 20
+        self.EPOCHS = 10
         self.num_data_workers = 4
         self.model_file = './models/xlnet_model_batch{}.bin'.format(batchsize)
         self.class_names = ['positive', 'negative', 'neutral']

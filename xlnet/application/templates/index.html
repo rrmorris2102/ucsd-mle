@@ -1,0 +1,55 @@
+
+{% extends "layout.html" %}
+
+{% block content %}
+
+<h1>Crypto Sentiment</h1>
+<h3>{{summary.first_comment_date}} - {{summary.last_comment_date}}</h3>
+
+<table class="table table-bordered">
+    <thead>
+      <tr>
+        <th scope="col">Asset</th>
+        <th scope="col">Positive <i class="far fa-smile" style="color:green"></i></th>
+        <th scope="col">Negative <i class="far fa-frown" style="color:red"></i></th>
+        <th scope="col">Neutral <i class="far fa-meh"></i></th>
+      </tr>
+    </thead>
+    <tbody>
+        {% for coin in summary.sentiment %}
+        <tr>
+            {% if coin.positive | int > coin.negative | int %}
+            <td class="bg-success">
+            {% elif coin.negative| int > coin.positive | int %}
+            <td class="bg-danger">
+            {% endif %}
+                <img src="{{ coin.icon_url }}"> {{ coin.coin }} {{ coin.name }}
+            </td>
+            <td>{{ coin.positive }}</td>
+            <td>{{ coin.negative }}</td>
+            <td>{{ coin.neutral }}</td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+
+<h3>Indexing Status</h3>
+
+<table class="table table-bordered">
+    <thead>
+      <tr>
+        <th scope="col">Table</th>
+        <th scope="col">Count</th>
+      </tr>
+    </thead>
+    <tbody>
+        {% for key, value in summary.indexing_status.items() %}
+        <tr>
+            <td>{{ key }}</td>
+            <td>{{ value.count }}</td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+
+{% endblock %}

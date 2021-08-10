@@ -5,6 +5,8 @@ import multiprocessing as mp
 from multiprocessing import Lock
 import threading, queue
 import time
+import json
+from datetime import datetime
 import pandas as pd
 from cosmo_db import RedditDB
 
@@ -26,6 +28,9 @@ model_file = './models/xlnet_model_batch48.bin'
 xlnet = XLNetSentiment(model_file, batchsize=1, max_len=64)
 summary_lock = Lock()
 
+coins_df = pd.read_json('coin_icons.json', orient='records')
+coins_df.set_index('asset_id', inplace=True, drop=True)
+
 class Inference(Resource):
     def get(self):
         return 501
@@ -43,11 +48,52 @@ class Inference(Resource):
 
 class Summary(Resource):
     def get(self):
+        reddit_db = RedditDB()
+
         summary_lock.acquire()
         df = pd.read_csv('sentiment_summary.csv')
         summary_lock.release()
-        result = df.to_json(orient='records')
-        return result, 201
+
+        result = {}
+        result['sentiment'] = df.to_dict(orient='records')
+
+        for idx, sentiment in enumerate(result['sentiment']):
+            if sentiment['coin'] in coins_df.index:
+                coin_info = coins_df.loc[sentiment['coin']]
+                result['sentiment'][idx]['icon_url'] = coin_info['url']
+
+        date_fmt = '%B %d, %Y'
+        first_comment = reddit_db.comments.get_first()
+        if first_comment:
+            first_comment = first_comment[0]
+            created_dt = datetime.fromtimestamp(first_comment['created_utc'])
+            result['first_comment_date'] = created_dt.strftime(date_fmt)
+        else:
+            result['first_comment_date'] = None
+        
+        last_comment = reddit_db.comments.get_last()
+        if last_comment:
+            last_comment = last_comment[0]
+            created_dt = datetime.fromtimestamp(last_comment['created_utc'])
+            result['last_comment_date'] = created_dt.strftime(date_fmt)
+        else:
+            result['last_comment_date'] = None
+
+        result['indexing_status'] = {
+            'coins': {},
+            'subreddits': {},
+            'articles': {},
+            'comments': {},
+            'authors': {}
+        }
+        
+        result['indexing_status']['coins']['count'] = reddit_db.coins.count()
+        result['indexing_status']['subreddits']['count'] = reddit_db.subreddits.count()
+        result['indexing_status']['authors']['count'] = reddit_db.authors.count()
+        result['indexing_status']['articles']['count'] = reddit_db.articles.count()
+        result['indexing_status']['comments']['count'] = reddit_db.comments.count()
+        
+        return json.dumps(result), 201
 
     def post(self):
         return 501
@@ -74,10 +120,17 @@ class SentimentSummaryWorker(threading.Thread):
 
             coin = request['coin']
             coin_id = request['coin_id']
+            coin_name = request['name']
 
             logging.info('Coin {}'.format(coin))
 
-            response = {'coin': coin, 'positive': 0, 'negative': 0, 'neutral': 0}
+            response = {
+                'coin': coin,
+                'name': coin_name,
+                'positive': 0,
+                'negative': 0,
+                'neutral': 0
+            }
 
             comment_refs = reddit_db.coins.association.get(reddit_db.comments, coin_id)
             if comment_refs:
@@ -127,22 +180,28 @@ class MainProcess(mp.Process):
                 for coin in coins_df.index:
                     coin_info = coins_df.loc[coin]
 
-                    request = {'coin': coin, 'coin_id': coin_info['id']}
+                    request = {
+                        'coin': coin,
+                        'coin_id': coin_info['id'],
+                        'name': coin_info['name'],
+                    }
                     requests.put(request)
 
                 requests.join()
 
                 data = {
                     'coin': [],
+                    'name': [],
                     'positive': [],
                     'negative': [],
-                    'neutral': []
+                    'neutral': [],
                 }
 
                 while not responses.empty():
                     response = responses.get()
 
                     data['coin'].append(response['coin'])
+                    data['name'].append(response['name'])
                     data['positive'].append(response['positive'])
                     data['negative'].append(response['negative'])
                     data['neutral'].append(response['neutral'])

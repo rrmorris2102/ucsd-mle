@@ -1,0 +1,9 @@
+numpy
+pandas
+tensorflow
+keras
+torch
+sklearn
+transformers
+flask-restful
+azure-cosmos

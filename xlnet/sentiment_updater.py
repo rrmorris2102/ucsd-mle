@@ -15,6 +15,7 @@ logging.basicConfig(format='[%(asctime)s] [%(filename)s:%(funcName)s:%(lineno)d]
 class XLNetRequest(object):
     def __init__(self):
         self.url = 'http://localhost:8000/predict'
+        #self.url = 'http://e77eff21f201.ngrok.io/predict'
 
     def predict(self, body):
         data = {'body': body}
@@ -51,38 +52,42 @@ class CoinProcess(mp.Process):
 
             sentiment_updated = 0
 
-            comment_refs = reddit_db.coins.association.get(reddit_db.comments, coin_id)
-            if comment_refs:
-                for idx, ref in enumerate(comment_refs):
-                    logging.debug('[{}] Comment {}/{}'.format(coin, idx, len(comment_refs)))
-                    comment = reddit_db.comments.get(db_id=ref['comments_id'])
-                    if comment:
-                        comment = comment[0]
-                        data['coin_id'].append(coin)
-                        data['comment_id'].append(comment['comment_id'])
-                        data['body'].append(comment['body'])
+            try:
+                comment_refs = reddit_db.coins.association.get(reddit_db.comments, coin_id)
+                if comment_refs:
+                    for idx, ref in enumerate(comment_refs):
+                        if idx % 100 == 0:
+                            logging.info('[{}] Comment {}/{}'.format(coin, idx, len(comment_refs)))
+                        comment = reddit_db.comments.get(db_id=ref['comments_id'])
+                        if comment:
+                            comment = comment[0]
+                            data['coin_id'].append(coin)
+                            data['comment_id'].append(comment['comment_id'])
+                            data['body'].append(comment['body'])
 
-                        if 'sentiment' in comment:
-                            data['sentiment'].append(comment['sentiment'])
-                        elif comment['body'].strip() == '':
-                            data['sentiment'].append(None)
-                        else:
-                            sentences = sent_tokenize(comment['body'])
-                            sentiment = {'positive': 0, 'negative': 0, 'neutral': 0}
-                            results = xlnet_api.predict(sentences)
-                            for result in results['sentiment']:
-                                sentiment[result] += 1
-
-                            if sentiment['positive'] > sentiment['negative']:
-                                data['sentiment'].append('positive')
-                            elif sentiment['negative'] > sentiment['positive']:
-                                data['sentiment'].append('negative')
+                            if 'sentiment' in comment:
+                                data['sentiment'].append(comment['sentiment'])
+                            elif comment['body'].strip() == '':
+                                data['sentiment'].append(None)
                             else:
-                                data['sentiment'].append('neutral')
+                                sentences = sent_tokenize(comment['body'])
+                                sentiment = {'positive': 0, 'negative': 0, 'neutral': 0}
+                                results = xlnet_api.predict(sentences)
+                                for result in results['sentiment']:
+                                    sentiment[result] += 1
 
-                            comment['sentiment'] = data['sentiment'][-1]
-                            reddit_db.comments.add(comment)
-                            sentiment_updated += 1
+                                if sentiment['positive'] > sentiment['negative']:
+                                    data['sentiment'].append('positive')
+                                elif sentiment['negative'] > sentiment['positive']:
+                                    data['sentiment'].append('negative')
+                                else:
+                                    data['sentiment'].append('neutral')
+
+                                comment['sentiment'] = data['sentiment'][-1]
+                                reddit_db.comments.add(comment)
+                                sentiment_updated += 1
+            except Exception as e:
+                logging.error(e)
 
             logging.info('[{}] {} sentiments updated'.format(coin, sentiment_updated))
 
@@ -97,7 +102,7 @@ def xlnet_predict():
     coins_df = reddit_db.coins.get_dataframe()
 
     # Skip coin names that are common dictionary words
-    skip_coins = ['ONE', 'MOON', 'LONG', 'BEAR', 'BULL', 'LINK', 'CASH', 'DOT', 'HOT', 'SUN', 'POT', 'BOX', 'LEND', 'DASH', 'MASK']
+    skip_coins = ['ONE', 'MOON', 'LONG', 'BEAR', 'BULL', 'LINK', 'CASH', 'DOT', 'HOT', 'SUN', 'POT', 'BOX', 'LEND', 'DASH', 'MASK', 'WHITE']
     coins_df = coins_df.drop(index=skip_coins)
 
     count = []

@@ -138,6 +138,24 @@ class CosmosContainer(object):
             items.append(item)
         return items
 
+    def get_first(self, filter=None):
+        if not self.date_index:
+            return None
+
+        items = []
+
+        if not filter is None:
+            query = 'SELECT * FROM c where c.table_id = {} and c.{} ORDER BY c.{} OFFSET 0 LIMIT 1'.format(self.table.table_id, filter, self.date_index)
+        else:
+            query = 'SELECT * FROM c where c.table_id = {} ORDER BY c.{} OFFSET 0 LIMIT 1'.format(self.table.table_id, self.date_index)
+
+        for item in self.container.query_items(
+                query=query,
+                enable_cross_partition_query=True):
+            items.append(item)
+
+        return items
+
     def get_last(self, filter=None):
         if not self.date_index:
             return None

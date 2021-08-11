@@ -1,3 +1,4 @@
+import os
 from flask import Flask, render_template
 import logging
 import requests
@@ -16,8 +17,7 @@ import json
 
 class XLNetRequest(object):
     def __init__(self):
-        #self.url = 'http://localhost:8000'
-        self.url = 'http://e77eff21f201.ngrok.io'
+        self.url = os.getenv('XLNET_URL', 'http://localhost:8000')
 
     def predict(self, body):
         data = {'body': body}

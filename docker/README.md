@@ -9,6 +9,9 @@ This guide outlines the steps for deploying the Crypto Sentiment Analysis applic
 ## 1. Training
 Run the xlnet_train.py script to generate the trained xlnet model to models/xlnet_model_batch48.bin.
 
+Link to xlnet model trained with Reddit crypto comments:  
+https://drive.google.com/file/d/1c8mTJkXmrr0UCmB4DWgi5ca7yl0QQAUP/view?usp=sharing
+
 ## 2. Source Tree
 ```
 ├── docker

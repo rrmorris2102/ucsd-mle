@@ -1,7 +1,10 @@
 # Crypto Sentiment Analysis Deployment Guide
 
 This guide outlines the steps for deploying the Crypto Sentiment Analysis application.  A test deployment is available at:
-http://e77eff21f201.ngrok.io
+
+* Model API Server - http://e77eff21f201.ngrok.io
+* Web UI - http://20.102.58.252
+
 
 ## 1. Training
 Run the xlnet_train.py script to generate the trained xlnet model to models/xlnet_model_batch48.bin.

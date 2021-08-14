@@ -6,21 +6,11 @@ import multiprocessing as mp
 import pandas as pd
 from nltk.tokenize import sent_tokenize
 from cosmo_db import RedditDB
-import requests
 import time
 import logging
+from xlnet_api import XLNetRequest
 
 logging.basicConfig(format='[%(asctime)s] [%(filename)s:%(funcName)s:%(lineno)d] %(message)s', level=logging.INFO)
-
-class XLNetRequest(object):
-    def __init__(self):
-        self.url = 'http://localhost:8000/predict'
-        #self.url = 'http://e77eff21f201.ngrok.io/predict'
-
-    def predict(self, body):
-        data = {'body': body}
-        x = requests.post(self.url, json=data)
-        return x.json()
 
 class CoinProcess(mp.Process):
     def __init__(self, requests):

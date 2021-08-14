@@ -1,7 +1,7 @@
 import os
 from flask import Flask, render_template
 import logging
-import requests
+from xlnet_api import XLNetRequest
 
 from gevent import monkey
 monkey.patch_all() # we need to patch very early
@@ -14,19 +14,6 @@ app = Flask(__name__,
     instance_relative_config=False)
 
 import json
-
-class XLNetRequest(object):
-    def __init__(self):
-        self.url = os.getenv('XLNET_URL', 'http://localhost:8000')
-
-    def predict(self, body):
-        data = {'body': body}
-        x = requests.post(self.url + '/predict', json=data)
-        return x.json()
-
-    def summary(self):
-        x = requests.get(self.url + '/summary')
-        return json.loads(x.json())
 
 @app.route("/")
 def hello_world():

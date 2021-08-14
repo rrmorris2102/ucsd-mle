@@ -6,7 +6,19 @@ http://e77eff21f201.ngrok.io
 ## 1. Training
 Run the xlnet_train.py script to generate the trained xlnet model to models/xlnet_model_batch48.bin.
 
-## 2. Model API Server
+## 2. Source Tree
+```
+├── docker
+│   ├── data_loader - Data Container
+│   ├── sentiment_updater - Model Container
+│   └── web_server - Web Container
+├── docs
+│   └── UCSD MLE Capstone Project.pdf
+├── reddit - Source for Data Container
+└── xlnet - Source for Model and Web Containers
+```
+
+## 3. Model API Server
 Model API Server runs predictions on available GPUs and returns a sentiment summary. Use the following command to start the server:
 
 ```
@@ -53,7 +65,7 @@ logging.info(summary)
 
 ##
 
-## 3. Data Container
+## 4. Data Container
 Data container scrapes comments from crypto Reddits and stores them in a Cosmos DB.  Steps to build and run:
 * Add Azure key to docker/env
 * Build the data-loader container
@@ -71,7 +83,7 @@ cd docker/data-loader
 sudo bash start.sh
 ```
 
-## 4. Sentiment Container
+## 5. Sentiment Container
 Sentiment container adds sentiment to the comments in the Cosmos DB.  Steps to build and run:
 * Build the sentiment-updater container
 * Run sentiment-updater container

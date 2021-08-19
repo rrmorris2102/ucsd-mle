@@ -36,8 +36,8 @@ python3 api.py
 The following endpoints are available:
 | URL | Method | Description |
 |-----|--------|-------------|
-| http://localhost:8000/predict | POST | Run sentiment analysis on the provided text |
-| http://localhost:8000/summary | GET | Report positive, negative and neutral counts for crypto coins
+| http://025a16bba0cc.ngrok.io/predict | POST | Run sentiment analysis on the provided text |
+| http://025a16bba0cc.ngrok.io/summary | GET | Report positive, negative and neutral counts for crypto coins
 
 Usage example:
 ```
@@ -46,8 +46,8 @@ import logging
 
 class XLNetRequest(object):
     def __init__(self):
-        self.url = 'http://localhost:8000'
-        #self.url = 'http://e77eff21f201.ngrok.io'
+        #self.url = 'http://localhost:8000'
+        self.url = 'http://025a16bba0cc.ngrok.io'
 
     def predict(self, body):
         data = {'body': body}

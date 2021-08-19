@@ -2,7 +2,7 @@
 
 This guide outlines the steps for deploying the Crypto Sentiment Analysis application.  A test deployment is available at:
 
-* Model API Server - http://e77eff21f201.ngrok.io
+* Model API Server - http://025a16bba0cc.ngrok.io
 * Web UI - http://20.102.58.252
 
 
